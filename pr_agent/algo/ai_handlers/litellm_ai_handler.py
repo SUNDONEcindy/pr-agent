@@ -1,5 +1,5 @@
 import os
-
+import requests
 import boto3
 import litellm
 import openai
@@ -52,8 +52,8 @@ class LiteLLMAIHandler(BaseAiHandler):
             litellm.anthropic_key = get_settings().anthropic.key
         if get_settings().get("COHERE.KEY", None):
             litellm.cohere_key = get_settings().cohere.key
-        if get_settings().get("REPLICATE.KEY", None):
-            litellm.replicate_key = get_settings().replicate.key
+        if get_settings().get("GROQ.KEY", None):
+            litellm.api_key = get_settings().groq.key
         if get_settings().get("REPLICATE.KEY", None):
             litellm.replicate_key = get_settings().replicate.key
         if get_settings().get("HUGGINGFACE.KEY", None):
@@ -61,7 +61,10 @@ class LiteLLMAIHandler(BaseAiHandler):
         if get_settings().get("HUGGINGFACE.API_BASE", None) and 'huggingface' in get_settings().config.model:
             litellm.api_base = get_settings().huggingface.api_base
             self.api_base = get_settings().huggingface.api_base
-        if get_settings().get("HUGGINGFACE.REPITITION_PENALTY", None):
+        if get_settings().get("OLLAMA.API_BASE", None):
+            litellm.api_base = get_settings().ollama.api_base
+            self.api_base = get_settings().ollama.api_base
+        if get_settings().get("HUGGINGFACE.REPETITION_PENALTY", None):
             self.repetition_penalty = float(get_settings().huggingface.repetition_penalty)
         if get_settings().get("VERTEXAI.VERTEX_PROJECT", None):
             litellm.vertex_project = get_settings().vertexai.vertex_project
@@ -99,20 +102,34 @@ class LiteLLMAIHandler(BaseAiHandler):
         retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.Timeout)), # No retry on RateLimitError
         stop=stop_after_attempt(OPENAI_RETRIES)
     )
-    async def chat_completion(self, model: str, system: str, user: str, temperature: float = 0.2):
+    async def chat_completion(self, model: str, system: str, user: str, temperature: float = 0.2, img_path: str = None):
         try:
             resp, finish_reason = None, None
             deployment_id = self.deployment_id
             if self.azure:
                 model = 'azure/' + model
             messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+            if img_path:
+                try:
+                    # check if the image link is alive
+                    r = requests.head(img_path, allow_redirects=True)
+                    if r.status_code == 404:
+                        error_msg = f"The image link is not [alive](img_path).\nPlease repost the original image as a comment, and send the question again with 'quote reply' (see [instructions](https://pr-agent-docs.codium.ai/tools/ask/#ask-on-images-using-the-pr-code-as-context))."
+                        get_logger().error(error_msg)
+                        return f"{error_msg}", "error"
+                except Exception as e:
+                    get_logger().error(f"Error fetching image: {img_path}", e)
+                    return f"Error fetching image: {img_path}", "error"
+                messages[1]["content"] = [{"type": "text", "text": messages[1]["content"]},
+                                          {"type": "image_url", "image_url": {"url": img_path}}]
+
             kwargs = {
                 "model": model,
                 "deployment_id": deployment_id,
                 "messages": messages,
                 "temperature": temperature,
                 "force_timeout": get_settings().config.ai_timeout,
-                "api_base" : self.api_base,
+                "api_base": self.api_base,
             }
             if self.aws_bedrock_client:
                 kwargs["aws_bedrock_client"] = self.aws_bedrock_client

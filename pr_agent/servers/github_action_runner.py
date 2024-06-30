@@ -46,19 +46,22 @@ async def run_action():
     if not GITHUB_EVENT_PATH:
         print("GITHUB_EVENT_PATH not set")
         return
-    if not OPENAI_KEY:
-        print("OPENAI_KEY not set")
-        return
     if not GITHUB_TOKEN:
         print("GITHUB_TOKEN not set")
         return
 
     # Set the environment variables in the settings
-    get_settings().set("OPENAI.KEY", OPENAI_KEY)
+    if OPENAI_KEY:
+        get_settings().set("OPENAI.KEY", OPENAI_KEY)
+    else:
+        # Might not be set if the user is using models not from OpenAI
+        print("OPENAI_KEY not set")
     if OPENAI_ORG:
         get_settings().set("OPENAI.ORG", OPENAI_ORG)
     get_settings().set("GITHUB.USER_TOKEN", GITHUB_TOKEN)
     get_settings().set("GITHUB.DEPLOYMENT_TYPE", "user")
+    enable_output = get_setting_or_env("GITHUB_ACTION_CONFIG.ENABLE_OUTPUT", True)
+    get_settings().set("GITHUB_ACTION_CONFIG.ENABLE_OUTPUT", enable_output)
 
     # Load the event payload
     try:
@@ -96,6 +99,7 @@ async def run_action():
 
                 # invoke by default all three tools
                 if auto_describe is None or is_true(auto_describe):
+                    get_settings().pr_description.final_update_message = False  # No final update message when auto_describe is enabled
                     await PRDescription(pr_url).run()
                 if auto_review is None or is_true(auto_review):
                     await PRReviewer(pr_url).run()
@@ -123,7 +127,7 @@ async def run_action():
                 if event_payload.get("issue", {}).get("pull_request"):
                     url = event_payload.get("issue", {}).get("pull_request", {}).get("url")
                     is_pr = True
-                elif event_payload.get("comment", {}).get("pull_request_url"): # for 'pull_request_review_comment
+                elif event_payload.get("comment", {}).get("pull_request_url"):  # for 'pull_request_review_comment
                     url = event_payload.get("comment", {}).get("pull_request_url")
                     is_pr = True
                     disable_eyes = True
@@ -135,8 +139,11 @@ async def run_action():
                     comment_id = event_payload.get("comment", {}).get("id")
                     provider = get_git_provider()(pr_url=url)
                     if is_pr:
-                        await PRAgent().handle_request(url, body,
-                                    notify=lambda: provider.add_eyes_reaction(comment_id, disable_eyes=disable_eyes))
+                        await PRAgent().handle_request(
+                            url, body, notify=lambda: provider.add_eyes_reaction(
+                                comment_id, disable_eyes=disable_eyes
+                            )
+                        )
                     else:
                         await PRAgent().handle_request(url, body)
 

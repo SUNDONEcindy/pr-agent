@@ -4,7 +4,9 @@ It can be invoked manually by commenting on any PR:
 ```
 /similar_issue
 ```
-For example:
+
+
+## Example usage
 
 ![similar_issue_original_issue](https://codium.ai/images/pr_agent/similar_issue_original_issue.png){width=768}
 
@@ -31,7 +33,7 @@ environment = "..."
 These parameters can be obtained by registering to [Pinecone](https://app.pinecone.io/?sessionType=signup/).
 
 
-## How to use:
+## How to use
 - To invoke the 'similar issue' tool from **CLI**, run:
 `python3 cli.py --issue_url=... similar_issue`
 
